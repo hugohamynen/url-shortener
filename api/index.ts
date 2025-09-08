@@ -7,26 +7,22 @@ interface LinkData {
   createdAt: string;
 }
 
-// Initialize KV with error handling
-let kv: any;
-try {
-  const kvModule = await import('@vercel/kv');
-  kv = kvModule.kv;
-} catch (error) {
-  console.error('Failed to import @vercel/kv:', error);
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    // Check if KV is available
-    if (!kv) {
-      return res.status(500).json({ error: 'Database not configured' });
+    // Simple debug response to check if basic function works
+    if (req.url === '/test') {
+      return res.status(200).json({ 
+        message: 'Function is working',
+        env: {
+          hasAdminToken: !!process.env.ADMIN_TOKEN,
+          hasKvUrl: !!process.env.KV_REST_API_URL,
+          hasKvToken: !!process.env.KV_REST_API_TOKEN
+        }
+      });
     }
 
-    // Check environment variables
-    if (!process.env.ADMIN_TOKEN) {
-      return res.status(500).json({ error: 'ADMIN_TOKEN not configured' });
-    }
+    // Import KV inside the handler to avoid top-level import issues
+    const { kv } = await import('@vercel/kv');
 
     const { method } = req;
     const url = new URL(req.url!, `http://${req.headers.host}`);
