@@ -3,16 +3,19 @@
 Target URL: https://eu.junctionplatform.com/events/junction-2025
 Domain: apply.hackjunction.com
 
-## 30 Generated Links
+## Named Links (Team Members)
 
-1. apply.hackjunction.com/K7mR3p
-2. apply.hackjunction.com/N9qW5j  
-3. apply.hackjunction.com/X2vB8n
-4. apply.hackjunction.com/L4cF9r
-5. apply.hackjunction.com/P6hY1t
-6. apply.hackjunction.com/M8kS4w
-7. apply.hackjunction.com/Q3nD7z
-8. apply.hackjunction.com/R5pA2c
+1. **Hugo** - apply.hackjunction.com/K7mR3p
+2. **Joel** - apply.hackjunction.com/N9qW5j  
+3. **Daniel** - apply.hackjunction.com/X2vB8n
+4. **Olivia** - apply.hackjunction.com/L4cF9r
+5. **Emma** - apply.hackjunction.com/P6hY1t
+6. **Miika** - apply.hackjunction.com/M8kS4w
+7. **Eemil** - apply.hackjunction.com/Q3nD7z
+8. **Noora** - apply.hackjunction.com/R5pA2c
+
+## Additional Links
+
 9. apply.hackjunction.com/T7xE9f
 10. apply.hackjunction.com/U4jG6h
 11. apply.hackjunction.com/V8mK3l
