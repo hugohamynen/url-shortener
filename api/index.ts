@@ -1,5 +1,4 @@
-import { VercelRequest, VercelResponse } from '@vercel/node';
-import { kv } from '@vercel/kv';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { nanoid } from 'nanoid';
 
 interface LinkData {
@@ -8,10 +7,30 @@ interface LinkData {
   createdAt: string;
 }
 
+// Initialize KV with error handling
+let kv: any;
+try {
+  const kvModule = await import('@vercel/kv');
+  kv = kvModule.kv;
+} catch (error) {
+  console.error('Failed to import @vercel/kv:', error);
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const { method } = req;
-  const url = new URL(req.url!, `http://${req.headers.host}`);
-  const pathname = url.pathname;
+  try {
+    // Check if KV is available
+    if (!kv) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+
+    // Check environment variables
+    if (!process.env.ADMIN_TOKEN) {
+      return res.status(500).json({ error: 'ADMIN_TOKEN not configured' });
+    }
+
+    const { method } = req;
+    const url = new URL(req.url!, `http://${req.headers.host}`);
+    const pathname = url.pathname;
 
   if (method === 'POST' && pathname === '/api/create') {
     return handleCreate(req, res);
@@ -25,7 +44,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return handleRedirect(req, res, pathname);
   }
 
-  res.status(404).json({ error: 'Not found' });
+    res.status(404).json({ error: 'Not found' });
+  } catch (error) {
+    console.error('Handler error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 }
 
 async function handleCreate(req: VercelRequest, res: VercelResponse) {
