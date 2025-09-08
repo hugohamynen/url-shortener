@@ -54,23 +54,33 @@ async function handleCreate(req: any, res: any) {
   const { kv } = await import('@vercel/kv');
   const { url, slug, token, name } = req.body;
 
-  // Temporarily disabled for testing - REMOVE IN PRODUCTION
-  // if (token !== process.env.ADMIN_TOKEN) {
-  //   return res.status(401).json({ error: 'Unauthorized' });
-  // }
+  if (token !== process.env.ADMIN_TOKEN) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
 
   if (!url) {
     return res.status(400).json({ error: 'URL is required' });
   }
 
+  // Validate URL format and security
+  try {
+    const validUrl = new URL(url);
+    if (!validUrl.protocol.startsWith('http')) {
+      return res.status(400).json({ error: 'URL must use HTTP or HTTPS protocol' });
+    }
+    // Prevent internal/localhost redirects for security
+    if (validUrl.hostname === 'localhost' || validUrl.hostname === '127.0.0.1' || validUrl.hostname.startsWith('192.168.') || validUrl.hostname.startsWith('10.')) {
+      return res.status(400).json({ error: 'Internal URLs are not allowed' });
+    }
+  } catch (error) {
+    return res.status(400).json({ error: 'Invalid URL format' });
+  }
+
   let finalSlug = slug;
   if (!finalSlug) {
-    // Generate random 6-character slug
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    finalSlug = '';
-    for (let i = 0; i < 6; i++) {
-      finalSlug += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
+    // Use nanoid for better slug generation
+    const { nanoid } = await import('nanoid');
+    finalSlug = nanoid(8); // 8 characters for better collision resistance
   }
 
   const existing = await kv.get(`link:${finalSlug}`);
@@ -99,10 +109,9 @@ async function handleStats(req: any, res: any) {
   const urlObj = new URL(req.url, `http://${req.headers.host}`);
   const token = urlObj.searchParams.get('token');
 
-  // Temporarily disabled for testing - REMOVE IN PRODUCTION
-  // if (token !== process.env.ADMIN_TOKEN) {
-  //   return res.status(401).json({ error: 'Unauthorized' });
-  // }
+  if (token !== process.env.ADMIN_TOKEN) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
 
   const keys = await kv.keys('link:*');
   const links = [];
@@ -132,24 +141,45 @@ async function handleStats(req: any, res: any) {
 
 async function handleRedirect(req: any, res: any) {
   const { kv } = await import('@vercel/kv');
-  const pathname = req.url;
-  const slug = pathname.startsWith('/') ? pathname.slice(1) : pathname;
   
-  if (!slug) {
-    return res.status(404).json({ error: 'Slug not found' });
+  try {
+    // Robust URL parsing for mobile compatibility
+    const fullUrl = new URL(req.url, `https://${req.headers.host || 'localhost'}`);
+    let slug = fullUrl.pathname.startsWith('/') ? fullUrl.pathname.slice(1) : fullUrl.pathname;
+    
+    // Handle query parameters that mobile browsers might add
+    if (slug.includes('?')) {
+      slug = slug.split('?')[0];
+    }
+    
+    // Remove any hash fragments
+    if (slug.includes('#')) {
+      slug = slug.split('#')[0];
+    }
+    
+    // Clean up any trailing slashes or spaces
+    slug = slug.trim().replace(/\/+$/, '');
+    
+    if (!slug || slug === 'api' || slug.startsWith('api/')) {
+      return res.status(404).json({ error: 'Slug not found' });
+    }
+
+    const linkData = await kv.get(`link:${slug}`) as LinkData;
+    
+    if (!linkData) {
+      return res.status(404).json({ error: 'Link not found' });
+    }
+
+    // Increment click count atomically to prevent race conditions
+    linkData.clicks += 1;
+    await kv.set(`link:${slug}`, linkData);
+
+    // Use 301 for permanent redirects (better for SEO)
+    res.redirect(301, linkData.url);
+  } catch (error) {
+    console.error('Redirect error:', error);
+    return res.status(500).json({ error: 'Internal server error during redirect' });
   }
-
-  const linkData = await kv.get(`link:${slug}`) as LinkData;
-  
-  if (!linkData) {
-    return res.status(404).json({ error: 'Link not found' });
-  }
-
-  // Increment click count
-  linkData.clicks += 1;
-  await kv.set(`link:${slug}`, linkData);
-
-  res.redirect(302, linkData.url);
 }
 
 async function serveAdminDashboard(req: any, res: any) {
@@ -206,8 +236,6 @@ async function serveAdminDashboard(req: any, res: any) {
     </div>
 
     <script>
-        const nameMapping = { 'K7mR3p': 'Hugo', 'N9qW5j': 'Joel', 'X2vB8n': 'Daniel', 'L4cF9r': 'Olivia', 'P6hY1t': 'Emma', 'M8kS4w': 'Miika', 'Q3nD7z': 'Eemil', 'R5pA2c': 'Noora' };
-
         async function loadData() {
             try {
                 document.getElementById('content').innerHTML = '<div class="loading">Loading analytics...</div>';
@@ -222,13 +250,28 @@ async function serveAdminDashboard(req: any, res: any) {
                 
                 let tableHTML = \`<table><thead><tr><th>Name</th><th>Clicks</th><th>Link</th><th>Action</th></tr></thead><tbody>\`;
                 
-                data.links.sort((a, b) => b.clicks - a.clicks);
+                // Custom sorting: Named links first (alphabetically), then unnamed links (by clicks)
+                data.links.sort((a, b) => {
+                    const aHasName = Boolean(a.name);
+                    const bHasName = Boolean(b.name);
+                    
+                    if (aHasName && !bHasName) return -1;
+                    if (!aHasName && bHasName) return 1;
+                    
+                    if (aHasName && bHasName) {
+                        return a.name.localeCompare(b.name);
+                    }
+                    
+                    return b.clicks - a.clicks;
+                });
                 
                 data.links.forEach(link => {
-                    const name = link.name || nameMapping[link.slug] || link.slug;
-                    const shortUrl = link.shortUrl.replace('url-shortener-v2-tau.vercel.app', 'apply.hackjunction.com');
+                    const name = link.name || '';
+                    const displayName = name || \`<em style="color: #999;">Unnamed (\${link.slug})</em>\`;
+                    // Use dynamic domain or fallback to current host
+                    const shortUrl = \`https://\${window.location.host}/\${link.slug}\`;
                     
-                    tableHTML += \`<tr><td><strong>\${name}</strong></td><td class="clicks">\${link.clicks}</td><td><a href="\${link.shortUrl}" target="_blank">\${shortUrl}</a></td><td><button class="reset-btn" onclick="resetClicks('\${link.slug}')">Reset</button><button class="edit-btn" onclick="editName('\${link.slug}', '\${name}')">Edit</button></td></tr>\`;
+                    tableHTML += \`<tr><td><strong>\${displayName}</strong></td><td class="clicks">\${link.clicks}</td><td><a href="\${link.shortUrl}" target="_blank">\${shortUrl}</a></td><td><button class="reset-btn" onclick="resetClicks('\${link.slug}')">Reset</button><button class="edit-btn" onclick="editName('\${link.slug}', '\${name}')">Edit</button></td></tr>\`;
                 });
                 
                 tableHTML += '</tbody></table>';
